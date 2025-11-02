@@ -19,12 +19,12 @@ class RandomAI:
     베이스라인(기준선)으로 사용할 수 있습니다.
     """
     
-    def get_action(self, state):
+    def get_action(self, env):
         """
         랜덤한 행동을 선택
         
         Args:
-            state: 현재 게임 상태 (사용하지 않음)
+            env: 현재 테트리스 환경 (사용하지 않음)
             
         Returns:
             0~6 사이의 랜덤 행동
@@ -120,10 +120,14 @@ class HeuristicAI:
     
     테트리스 전문가들이 사용하는 전략을 코드로 구현한 AI입니다.
     예: 구멍 만들지 않기, 평평하게 쌓기, 가장자리 먼저 채우기 등
+    
+    이 구현은 간단한 버전으로, GreedyAI와 유사하게 동작하지만
+    전문가들이 선호하는 가중치를 사용합니다.
     """
     
     def __init__(self):
         """휴리스틱 AI 초기화"""
+        # 전문가 규칙 기반 가중치 (조정 가능)
         self.weights = {
             'lines_cleared': 0.76,      # 라인 클리어는 매우 중요
             'holes': -0.36,             # 구멍은 피해야 함
@@ -131,73 +135,64 @@ class HeuristicAI:
             'height': -0.51,            # 높이는 낮게 유지
         }
     
-    def get_all_possible_placements(self, env: TetrisEnv):
+    def evaluate_state(self, env: TetrisEnv) -> float:
         """
-        현재 블록의 모든 가능한 배치 위치를 찾기
-        
-        현재 블록을 모든 가능한 위치와 회전에 배치해보고
-        각 경우의 결과를 평가합니다.
+        전문가 규칙을 사용하여 상태를 평가
         
         Args:
-            env: 현재 테트리스 환경
+            env: 평가할 테트리스 환경
             
         Returns:
-            (행동 시퀀스, 평가 점수) 튜플의 리스트
+            상태 평가 점수 (높을수록 좋음)
         """
-        placements = []
+        info = env.get_board_info()
         
-        # 4가지 회전 상태
-        for rotation in range(4):
-            test_env = env.clone()
-            
-            # 회전 적용
-            for _ in range(rotation):
-                test_env.step(4)  # 시계방향 회전
-            
-            # 모든 가능한 수평 위치
-            for x_offset in range(-5, 6):
-                test_env2 = test_env.clone()
-                
-                # 좌우 이동
-                if x_offset < 0:
-                    for _ in range(abs(x_offset)):
-                        test_env2.step(1)  # 왼쪽
-                elif x_offset > 0:
-                    for _ in range(x_offset):
-                        test_env2.step(2)  # 오른쪽
-                
-                # 하드 드롭
-                _, _, done, _ = test_env2.step(6)
-                
-                if not done:
-                    # 상태 평가
-                    info = test_env2.get_board_info()
-                    score = (
-                        self.weights['lines_cleared'] * test_env2.lines_cleared +
-                        self.weights['holes'] * info['holes'] +
-                        self.weights['bumpiness'] * info['bumpiness'] +
-                        self.weights['height'] * info['aggregate_height']
-                    )
-                    
-                    placements.append((rotation, x_offset, score))
+        score = (
+            self.weights['lines_cleared'] * env.lines_cleared +
+            self.weights['holes'] * info['holes'] +
+            self.weights['bumpiness'] * info['bumpiness'] +
+            self.weights['height'] * info['aggregate_height']
+        )
         
-        return placements
+        return score
     
     def get_action(self, env: TetrisEnv) -> int:
         """
-        최적의 배치를 찾아 해당 행동을 반환
+        최적의 행동을 선택
+        
+        모든 가능한 행동을 시뮬레이션하고 전문가 규칙으로 평가하여
+        가장 좋은 행동을 반환합니다.
         
         Args:
             env: 현재 테트리스 환경
             
         Returns:
-            선택된 행동
+            선택된 행동 (0~6)
         """
-        # 이 구현은 단순화된 버전입니다
-        # 실제로는 전체 경로를 계획해야 하지만,
-        # 여기서는 탐욕 AI와 유사하게 동작합니다
-        greedy_ai = GreedyAI()
-        return greedy_ai.get_action(env)
+        best_action = 0
+        best_score = float('-inf')
+        
+        # 모든 가능한 행동을 시도
+        for action in range(7):
+            # 환경 복사 (시뮬레이션용)
+            test_env = env.clone()
+            
+            # 행동 수행
+            _, reward, done, _ = test_env.step(action)
+            
+            # 게임이 끝나지 않았으면 상태 평가
+            if not done:
+                score = self.evaluate_state(test_env) + reward
+            else:
+                # 게임 오버는 매우 나쁨
+                score = -1000
+            
+            # 더 좋은 행동이면 업데이트
+            if score > best_score:
+                best_score = score
+                best_action = action
+        
+        return best_action
 
 
 def train_and_evaluate(ai_class, num_games: int = 10, max_steps: int = 1000):

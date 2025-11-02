@@ -447,7 +447,7 @@ class TetrisEnv:
         cloned.board = self.board.copy()
         cloned.current_piece = self.current_piece.copy() if self.current_piece is not None else None
         cloned.current_piece_type = self.current_piece_type
-        cloned.current_pos = self.current_pos.copy() if self.current_pos is not None else None
+        cloned.current_pos = self.current_pos[:] if self.current_pos is not None else None
         cloned.score = self.score
         cloned.lines_cleared = self.lines_cleared
         cloned.game_over = self.game_over
